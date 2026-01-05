@@ -1,0 +1,72 @@
+# OS System Files
+.DS_Store
+Thumbs.db
+._*
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+.classpath
+.project
+.settings/
+
+# Java & Gradle
+.gradle/
+build/
+out/
+bin/
+target/
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar.gz
+*.rar
+!gradle-wrapper.jar
+
+# Frontend (Node, Next.js, React)
+node_modules/
+.next/
+dist/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm/
+
+# Environment Variables & Secrets
+.env
+.env.*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.key
+*.pem
+*.pfx
+*.p12
+secrets/
+
+# Logs
+*.log
+logs/
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!example.tfvars
+
+# Docker
+docker-compose.override.yml
+
+# Temporary Files
+tmp/
+temp/
