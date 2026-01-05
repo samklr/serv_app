@@ -1,0 +1,103 @@
+# Cloud Build configuration for Servantin
+# Builds and deploys both frontend and backend to Cloud Run
+
+substitutions:
+  _REGION: europe-west1
+  _ENVIRONMENT: dev
+  _BACKEND_IMAGE_TAG: ${SHORT_SHA}
+  _FRONTEND_IMAGE_TAG: ${SHORT_SHA}
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+steps:
+  # ===== Backend Build =====
+  - id: "backend-build"
+    name: "gcr.io/cloud-builders/docker"
+    dir: "backend"
+    args:
+      - "build"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/backend:${_BACKEND_IMAGE_TAG}"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/backend:latest"
+      - "--cache-from"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/backend:latest"
+      - "."
+
+  - id: "backend-push"
+    name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "--all-tags"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/backend"
+    waitFor: ["backend-build"]
+
+  # ===== Frontend Build =====
+  - id: "frontend-build"
+    name: "gcr.io/cloud-builders/docker"
+    dir: "frontend"
+    args:
+      - "build"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/frontend:${_FRONTEND_IMAGE_TAG}"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/frontend:latest"
+      - "--build-arg"
+      - "NEXT_PUBLIC_API_URL="
+      - "--cache-from"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/frontend:latest"
+      - "."
+
+  - id: "frontend-push"
+    name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "--all-tags"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/frontend"
+    waitFor: ["frontend-build"]
+
+  # ===== Deploy Backend to Cloud Run =====
+  - id: "deploy-backend"
+    name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "gcloud"
+    args:
+      - "run"
+      - "deploy"
+      - "servantin-api"
+      - "--image"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/backend:${_BACKEND_IMAGE_TAG}"
+      - "--region"
+      - "${_REGION}"
+      - "--platform"
+      - "managed"
+      - "--allow-unauthenticated"
+      - "--set-env-vars"
+      - "SPRING_PROFILES_ACTIVE=${_ENVIRONMENT}"
+    waitFor: ["backend-push"]
+
+  # ===== Deploy Frontend to Cloud Run =====
+  - id: "deploy-frontend"
+    name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "gcloud"
+    args:
+      - "run"
+      - "deploy"
+      - "servantin-web"
+      - "--image"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/frontend:${_FRONTEND_IMAGE_TAG}"
+      - "--region"
+      - "${_REGION}"
+      - "--platform"
+      - "managed"
+      - "--allow-unauthenticated"
+    waitFor: ["frontend-push", "deploy-backend"]
+
+images:
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/backend:${_BACKEND_IMAGE_TAG}"
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/backend:latest"
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/frontend:${_FRONTEND_IMAGE_TAG}"
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/servantin/frontend:latest"
+
+timeout: "1800s"
