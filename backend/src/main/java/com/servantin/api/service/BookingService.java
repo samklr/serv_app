@@ -29,6 +29,7 @@ public class BookingService {
     private final MessageRepository messageRepository;
     private final RatingRepository ratingRepository;
     private final ProviderProfileRepository providerProfileRepository;
+    private final EmailService emailService;
 
     @Transactional
     public BookingDto createBooking(UUID clientId, CreateBookingRequest request) {
@@ -62,6 +63,30 @@ public class BookingService {
         booking = bookingRepository.save(booking);
         log.info("Created booking {} for client {} with provider {}",
                 booking.getId(), clientId, request.getProviderId());
+
+        // Send email notifications (don't fail booking creation if email fails)
+        try {
+            emailService.sendBookingRequestedToClient(
+                    client.getEmail(),
+                    client.getName(),
+                    booking.getId().toString(),
+                    category.getName(),
+                    booking.getScheduledAt()
+            );
+
+            if (provider != null) {
+                emailService.sendBookingRequestedToProvider(
+                        provider.getEmail(),
+                        provider.getName(),
+                        client.getName(),
+                        booking.getId().toString(),
+                        category.getName(),
+                        booking.getScheduledAt()
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to send booking creation emails for booking {}: {}", booking.getId(), e.getMessage());
+        }
 
         return toDto(booking, clientId);
     }
@@ -118,6 +143,20 @@ public class BookingService {
         booking = bookingRepository.save(booking);
         log.info("Provider {} accepted booking {}", providerId, bookingId);
 
+        // Send email notification to client
+        try {
+            emailService.sendBookingAccepted(
+                    booking.getClient().getEmail(),
+                    booking.getClient().getName(),
+                    booking.getProvider().getName(),
+                    booking.getId().toString(),
+                    booking.getCategory().getName(),
+                    booking.getScheduledAt()
+            );
+        } catch (Exception e) {
+            log.error("Failed to send booking accepted email for booking {}: {}", bookingId, e.getMessage());
+        }
+
         return toDto(booking, providerId);
     }
 
@@ -135,9 +174,23 @@ public class BookingService {
         }
 
         booking.setStatus(BookingStatus.DECLINED);
+        String providerName = booking.getProvider().getName();
         booking.setProvider(null); // Allow client to select another provider
         booking = bookingRepository.save(booking);
         log.info("Provider {} declined booking {}: {}", providerId, bookingId, reason);
+
+        // Send email notification to client
+        try {
+            emailService.sendBookingDeclined(
+                    booking.getClient().getEmail(),
+                    booking.getClient().getName(),
+                    providerName,
+                    booking.getId().toString(),
+                    booking.getCategory().getName()
+            );
+        } catch (Exception e) {
+            log.error("Failed to send booking declined email for booking {}: {}", bookingId, e.getMessage());
+        }
 
         return toDto(booking, providerId);
     }
@@ -160,6 +213,19 @@ public class BookingService {
         booking = bookingRepository.save(booking);
         log.info("Provider {} completed booking {}", providerId, bookingId);
 
+        // Send email notification to client
+        try {
+            emailService.sendBookingCompleted(
+                    booking.getClient().getEmail(),
+                    booking.getClient().getName(),
+                    booking.getProvider().getName(),
+                    booking.getId().toString(),
+                    booking.getCategory().getName()
+            );
+        } catch (Exception e) {
+            log.error("Failed to send booking completed email for booking {}: {}", bookingId, e.getMessage());
+        }
+
         return toDto(booking, providerId);
     }
 
@@ -181,6 +247,34 @@ public class BookingService {
         booking.setStatus(BookingStatus.CANCELED);
         booking = bookingRepository.save(booking);
         log.info("User {} canceled booking {}", userId, bookingId);
+
+        // Send email notification to the other party
+        try {
+            boolean canceledByClient = booking.getClient().getId().equals(userId);
+            if (canceledByClient && booking.getProvider() != null) {
+                // Client canceled, notify provider
+                emailService.sendBookingCanceled(
+                        booking.getProvider().getEmail(),
+                        booking.getProvider().getName(),
+                        booking.getClient().getName(),
+                        booking.getId().toString(),
+                        booking.getCategory().getName(),
+                        "client"
+                );
+            } else if (!canceledByClient) {
+                // Provider canceled, notify client
+                emailService.sendBookingCanceled(
+                        booking.getClient().getEmail(),
+                        booking.getClient().getName(),
+                        booking.getProvider().getName(),
+                        booking.getId().toString(),
+                        booking.getCategory().getName(),
+                        "provider"
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to send booking canceled email for booking {}: {}", bookingId, e.getMessage());
+        }
 
         return toDto(booking, userId);
     }

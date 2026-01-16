@@ -35,6 +35,36 @@ stripe:
   api-key: ${STRIPE_API_KEY:sk_test_placeholder}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_placeholder}
 
+# AWS SES Configuration
+aws:
+  ses:
+    region: ${AWS_SES_REGION:us-east-1}
+    access-key-id: ${AWS_ACCESS_KEY_ID}
+    secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+    from-email: ${AWS_SES_FROM_EMAIL:noreply@servantin.com}
+    from-name: ${AWS_SES_FROM_NAME:Servantin}
+
+# Application URLs Configuration
+app:
+  url:
+    frontend: ${FRONTEND_URL:http://localhost:3000}
+    backend: ${BACKEND_URL:http://localhost:8080}
+  email:
+    verification-token-expiry-hours: 24
+    reset-token-expiry-hours: 1
+
+# GCP Storage Configuration
+gcp:
+  storage:
+    bucket-name: ${STORAGE_BUCKET:servantin-dev-uploads}
+    project-id: ${GCP_PROJECT_ID:local-dev-project}
+
+# File Upload Configuration
+upload:
+  max-file-size: 5242880 # 5 MB in bytes
+  allowed-image-types: image/jpeg,image/png
+  allowed-document-types: application/pdf,image/jpeg,image/png
+
 # OpenAPI / Swagger Configuration
 springdoc:
   api-docs:

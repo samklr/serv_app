@@ -22,5 +22,6 @@ public class AuthResponse {
         private String name;
         private UserRole role;
         private boolean hasProviderProfile;
+        private boolean emailVerified;
     }
 }

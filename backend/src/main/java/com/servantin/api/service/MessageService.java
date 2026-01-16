@@ -24,6 +24,7 @@ public class MessageService {
     private final MessageRepository messageRepository;
     private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
+    private final EmailService emailService;
 
     @Transactional(readOnly = true)
     public List<MessageDto> getBookingMessages(UUID bookingId, UUID userId) {
@@ -64,6 +65,25 @@ public class MessageService {
 
         message = messageRepository.save(message);
         log.info("User {} sent message in booking {}", senderId, bookingId);
+
+        // Send email notification to the recipient (don't fail message sending if email fails)
+        try {
+            boolean senderIsClient = booking.getClient().getId().equals(senderId);
+            User recipient = senderIsClient ? booking.getProvider() : booking.getClient();
+
+            if (recipient != null) {
+                emailService.sendNewMessageNotification(
+                        recipient.getEmail(),
+                        recipient.getName(),
+                        sender.getName(),
+                        booking.getId().toString(),
+                        booking.getCategory().getName(),
+                        request.getContent()
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to send new message email notification for booking {}: {}", bookingId, e.getMessage());
+        }
 
         return toDto(message, senderId);
     }

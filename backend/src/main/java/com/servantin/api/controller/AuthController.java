@@ -1,8 +1,6 @@
 package com.servantin.api.controller;
 
-import com.servantin.api.dto.auth.AuthResponse;
-import com.servantin.api.dto.auth.LoginRequest;
-import com.servantin.api.dto.auth.RegisterRequest;
+import com.servantin.api.dto.auth.*;
 import com.servantin.api.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -53,5 +51,53 @@ public class AuthController {
     })
     public ResponseEntity<AuthResponse.UserDto> getCurrentUser(@AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(authService.getCurrentUser(userDetails.getUsername()));
+    }
+
+    // ==================== Email Verification Endpoints ====================
+
+    @PostMapping("/verify-email")
+    @Operation(summary = "Verify email address", description = "Verify user email with verification token sent via email")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Email verified successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid or expired token")
+    })
+    public ResponseEntity<java.util.Map<String, String>> verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+        authService.verifyEmail(request.getToken());
+        return ResponseEntity.ok(java.util.Map.of("message", "Email verified successfully"));
+    }
+
+    @PostMapping("/resend-verification")
+    @Operation(summary = "Resend verification email", description = "Send a new verification email to user")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Verification email sent"),
+            @ApiResponse(responseCode = "400", description = "User not found or email already verified")
+    })
+    public ResponseEntity<java.util.Map<String, String>> resendVerificationEmail(@RequestParam String email) {
+        authService.resendVerificationEmail(email);
+        return ResponseEntity.ok(java.util.Map.of("message", "Verification email sent"));
+    }
+
+    // ==================== Password Reset Endpoints ====================
+
+    @PostMapping("/password-reset/request")
+    @Operation(summary = "Request password reset", description = "Request a password reset link via email")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Password reset email sent if account exists"),
+            @ApiResponse(responseCode = "400", description = "Invalid request")
+    })
+    public ResponseEntity<java.util.Map<String, String>> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
+        authService.requestPasswordReset(request.getEmail());
+        return ResponseEntity.ok(java.util.Map.of("message", "Password reset email sent if account exists"));
+    }
+
+    @PostMapping("/password-reset/confirm")
+    @Operation(summary = "Confirm password reset", description = "Reset password using reset token")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Password reset successful"),
+            @ApiResponse(responseCode = "400", description = "Invalid or expired token")
+    })
+    public ResponseEntity<java.util.Map<String, String>> confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmRequest request) {
+        authService.confirmPasswordReset(request.getToken(), request.getNewPassword());
+        return ResponseEntity.ok(java.util.Map.of("message", "Password reset successful"));
     }
 }

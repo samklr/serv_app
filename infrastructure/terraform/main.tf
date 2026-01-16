@@ -411,6 +411,51 @@ resource "google_secret_manager_secret_version" "stripe_api_key" {
   }
 }
 
+# -----------------------------------------------------------------------------
+# AWS SES Secrets (for email notifications)
+# -----------------------------------------------------------------------------
+resource "google_secret_manager_secret" "aws_access_key_id" {
+  secret_id = "${local.name_prefix}-aws-access-key-id"
+
+  labels = local.common_labels
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.apis["secretmanager.googleapis.com"]]
+}
+
+resource "google_secret_manager_secret_version" "aws_access_key_id" {
+  secret      = google_secret_manager_secret.aws_access_key_id.id
+  secret_data = var.aws_access_key_id
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "google_secret_manager_secret" "aws_secret_access_key" {
+  secret_id = "${local.name_prefix}-aws-secret-access-key"
+
+  labels = local.common_labels
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.apis["secretmanager.googleapis.com"]]
+}
+
+resource "google_secret_manager_secret_version" "aws_secret_access_key" {
+  secret      = google_secret_manager_secret.aws_secret_access_key.id
+  secret_data = var.aws_secret_access_key
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 # =============================================================================
 # IAM & SERVICE ACCOUNTS
 # =============================================================================

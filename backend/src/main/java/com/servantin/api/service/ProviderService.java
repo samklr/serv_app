@@ -1,9 +1,11 @@
 package com.servantin.api.service;
 
 import com.servantin.api.domain.entity.*;
+import com.servantin.api.domain.model.DocumentType;
 import com.servantin.api.domain.model.PricingType;
 import com.servantin.api.domain.model.TimeSlot;
 import com.servantin.api.domain.model.UserRole;
+import com.servantin.api.domain.model.VerificationStatus;
 import com.servantin.api.dto.category.CategoryDto;
 import com.servantin.api.dto.provider.*;
 import com.servantin.api.repository.*;
@@ -11,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
@@ -30,6 +33,9 @@ public class ProviderService {
         private final ProviderAvailabilityRepository providerAvailabilityRepository;
         private final ProviderPricingRepository providerPricingRepository;
         private final RatingRepository ratingRepository;
+        private final ProviderDocumentRepository providerDocumentRepository;
+        private final StorageService storageService;
+        private final EmailService emailService;
 
         @Transactional(readOnly = true)
         public ProviderProfileDto getProviderProfile(UUID userId) {
@@ -197,7 +203,78 @@ public class ProviderService {
                 profile.setIsVerified(verified);
                 profile.setVerificationNotes(notes);
                 profile = providerProfileRepository.save(profile);
+
+                // Send email notification to provider
+                try {
+                        User provider = profile.getUser();
+                        if (verified) {
+                                emailService.sendProviderVerified(
+                                                provider.getEmail(),
+                                                provider.getName()
+                                );
+                        } else {
+                                emailService.sendProviderRejected(
+                                                provider.getEmail(),
+                                                provider.getName(),
+                                                notes != null ? notes : "Please contact support for more information"
+                                );
+                        }
+                } catch (Exception e) {
+                        log.error("Failed to send provider verification email for profile {}: {}", profileId, e.getMessage());
+                }
+
                 return toDto(profile);
+        }
+
+        /**
+         * Upload a provider document for verification
+         */
+        @Transactional
+        public ProviderDocumentDto uploadProviderDocument(UUID userId, MultipartFile file, String documentTypeStr) {
+                User user = userRepository.findById(userId)
+                                .orElseThrow(() -> new RuntimeException("User not found"));
+
+                ProviderProfile profile = providerProfileRepository.findByUser_Id(userId)
+                                .orElseThrow(() -> new RuntimeException("Provider profile not found"));
+
+                // Parse document type
+                DocumentType documentType;
+                try {
+                        documentType = DocumentType.valueOf(documentTypeStr.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                        throw new RuntimeException("Invalid document type: " + documentTypeStr);
+                }
+
+                // Upload file to GCS
+                String gcsUrl = storageService.uploadProviderDocument(file, profile.getId());
+
+                // Create document record
+                ProviderDocument document = ProviderDocument.builder()
+                                .providerProfile(profile)
+                                .documentType(documentType)
+                                .documentUrl(gcsUrl)
+                                .fileName(file.getOriginalFilename())
+                                .fileSize(file.getSize())
+                                .status(VerificationStatus.PENDING)
+                                .build();
+
+                document = providerDocumentRepository.save(document);
+                log.info("Provider {} uploaded document: type={}, id={}", userId, documentType, document.getId());
+
+                return toDocumentDto(document);
+        }
+
+        /**
+         * Get all documents for a provider
+         */
+        @Transactional(readOnly = true)
+        public List<ProviderDocumentDto> getProviderDocuments(UUID userId) {
+                ProviderProfile profile = providerProfileRepository.findByUser_Id(userId)
+                                .orElseThrow(() -> new RuntimeException("Provider profile not found"));
+
+                return providerDocumentRepository.findByProviderProfileId(profile.getId()).stream()
+                                .map(this::toDocumentDto)
+                                .toList();
         }
 
         private boolean hasAvailability(ProviderProfile profile, int weekday, TimeSlot timeSlot) {
@@ -313,6 +390,23 @@ public class ProviderService {
                                 .fixedPrice(pricing != null ? pricing.getFixedPrice() : null)
                                 .pricingType(pricing != null ? pricing.getPricingType().name() : null)
                                 .responseTimeMinutes(profile.getResponseTimeMinutes())
+                                .build();
+        }
+
+        private ProviderDocumentDto toDocumentDto(ProviderDocument document) {
+                return ProviderDocumentDto.builder()
+                                .id(document.getId())
+                                .providerProfileId(document.getProviderProfile().getId())
+                                .documentType(document.getDocumentType())
+                                .documentUrl(document.getDocumentUrl())
+                                .fileName(document.getFileName())
+                                .fileSize(document.getFileSize())
+                                .status(document.getStatus())
+                                .verificationNotes(document.getVerificationNotes())
+                                .verifiedById(document.getVerifiedBy() != null ? document.getVerifiedBy().getId() : null)
+                                .verifiedByName(document.getVerifiedBy() != null ? document.getVerifiedBy().getName() : null)
+                                .verifiedAt(document.getVerifiedAt())
+                                .uploadedAt(document.getUploadedAt())
                                 .build();
         }
 }

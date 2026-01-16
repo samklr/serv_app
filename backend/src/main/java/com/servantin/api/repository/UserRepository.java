@@ -24,4 +24,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.providerProfile WHERE u.id = :id")
     Optional<User> findByIdWithProfile(UUID id);
+
+    // Email verification methods
+    Optional<User> findByVerificationToken(String verificationToken);
+
+    // Password reset methods
+    Optional<User> findByResetToken(String resetToken);
 }
