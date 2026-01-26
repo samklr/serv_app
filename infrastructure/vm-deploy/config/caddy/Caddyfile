@@ -1,0 +1,94 @@
+# Servantin Caddy Configuration
+# Automatic HTTPS with Let's Encrypt
+
+{
+	# Global options
+	email {$ACME_EMAIL:admin@latticeiq.net}
+
+	# Staging for testing (uncomment to avoid rate limits during testing)
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# Main site
+{$DOMAIN:servapp.latticeiq.net} {
+	# Enable compression
+	encode gzip zstd
+
+	# Security headers
+	header {
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Backend API
+	handle /api/* {
+		reverse_proxy backend:8080 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+
+			# Timeouts
+			transport http {
+				read_timeout 120s
+				write_timeout 120s
+			}
+		}
+	}
+
+	# Swagger UI
+	handle /swagger-ui* {
+		reverse_proxy backend:8080 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# OpenAPI docs
+	handle /api-docs* {
+		reverse_proxy backend:8080 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# Actuator endpoints (internal only)
+	handle /actuator* {
+		respond "Forbidden" 403
+	}
+
+	# Health check endpoint (internal)
+	handle /health {
+		reverse_proxy backend:8080/actuator/health {
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# Frontend (Next.js) - default handler
+	handle {
+		reverse_proxy frontend:3000 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up Host {host}
+
+			# WebSocket support for HMR (if needed)
+			header_up Connection {>Connection}
+			header_up Upgrade {>Upgrade}
+		}
+	}
+
+	# Logging
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
+
+# HTTP to HTTPS redirect is automatic with Caddy

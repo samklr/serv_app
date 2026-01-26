@@ -12,6 +12,7 @@ import java.util.Map;
 public class ApiError {
     private int status;
     private String message;
+    private String errorCode;
     private String path;
     private Instant timestamp;
     private List<FieldError> errors;

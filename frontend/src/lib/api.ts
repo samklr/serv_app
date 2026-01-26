@@ -137,6 +137,28 @@ export const authApi = {
     const response = await api.get('/api/auth/me');
     return response.data;
   },
+
+  verifyEmail: async (token: string): Promise<{ message: string }> => {
+    const response = await api.post('/api/auth/verify-email', { token });
+    return response.data;
+  },
+
+  resendVerification: async (email: string): Promise<{ message: string }> => {
+    const response = await api.post('/api/auth/resend-verification', null, {
+      params: { email },
+    });
+    return response.data;
+  },
+
+  requestPasswordReset: async (email: string): Promise<{ message: string }> => {
+    const response = await api.post('/api/auth/password-reset/request', { email });
+    return response.data;
+  },
+
+  confirmPasswordReset: async (token: string, newPassword: string): Promise<{ message: string }> => {
+    const response = await api.post('/api/auth/password-reset/confirm', { token, newPassword });
+    return response.data;
+  },
 };
 
 export const categoryApi = {

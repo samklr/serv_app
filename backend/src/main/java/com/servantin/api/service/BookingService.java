@@ -70,18 +70,17 @@ public class BookingService {
                     client.getEmail(),
                     client.getName(),
                     booking.getId().toString(),
-                    category.getName(),
-                    booking.getScheduledAt()
+                    category.getName()
             );
 
             if (provider != null) {
                 emailService.sendBookingRequestedToProvider(
                         provider.getEmail(),
                         provider.getName(),
-                        client.getName(),
                         booking.getId().toString(),
+                        client.getName(),
                         category.getName(),
-                        booking.getScheduledAt()
+                        request.getDescription() != null ? request.getDescription() : ""
                 );
             }
         } catch (Exception e) {
@@ -149,9 +148,7 @@ public class BookingService {
                     booking.getClient().getEmail(),
                     booking.getClient().getName(),
                     booking.getProvider().getName(),
-                    booking.getId().toString(),
-                    booking.getCategory().getName(),
-                    booking.getScheduledAt()
+                    booking.getId().toString()
             );
         } catch (Exception e) {
             log.error("Failed to send booking accepted email for booking {}: {}", bookingId, e.getMessage());
@@ -185,8 +182,7 @@ public class BookingService {
                     booking.getClient().getEmail(),
                     booking.getClient().getName(),
                     providerName,
-                    booking.getId().toString(),
-                    booking.getCategory().getName()
+                    booking.getId().toString()
             );
         } catch (Exception e) {
             log.error("Failed to send booking declined email for booking {}: {}", bookingId, e.getMessage());
@@ -213,14 +209,21 @@ public class BookingService {
         booking = bookingRepository.save(booking);
         log.info("Provider {} completed booking {}", providerId, bookingId);
 
-        // Send email notification to client
+        // Send email notification to both parties
         try {
+            // Notify client
             emailService.sendBookingCompleted(
                     booking.getClient().getEmail(),
                     booking.getClient().getName(),
+                    booking.getId().toString(),
+                    false
+            );
+            // Notify provider
+            emailService.sendBookingCompleted(
+                    booking.getProvider().getEmail(),
                     booking.getProvider().getName(),
                     booking.getId().toString(),
-                    booking.getCategory().getName()
+                    true
             );
         } catch (Exception e) {
             log.error("Failed to send booking completed email for booking {}: {}", bookingId, e.getMessage());
@@ -256,20 +259,14 @@ public class BookingService {
                 emailService.sendBookingCanceled(
                         booking.getProvider().getEmail(),
                         booking.getProvider().getName(),
-                        booking.getClient().getName(),
-                        booking.getId().toString(),
-                        booking.getCategory().getName(),
-                        "client"
+                        booking.getId().toString()
                 );
             } else if (!canceledByClient) {
                 // Provider canceled, notify client
                 emailService.sendBookingCanceled(
                         booking.getClient().getEmail(),
                         booking.getClient().getName(),
-                        booking.getProvider().getName(),
-                        booking.getId().toString(),
-                        booking.getCategory().getName(),
-                        "provider"
+                        booking.getId().toString()
                 );
             }
         } catch (Exception e) {

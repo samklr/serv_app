@@ -86,12 +86,14 @@ public class ProviderController {
             @ApiResponse(responseCode = "400", description = "Invalid file type or size"),
             @ApiResponse(responseCode = "401", description = "Not authenticated")
     })
-    public ResponseEntity<UploadResponse> uploadProfilePhoto(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<UploadResponse> uploadProfilePhoto(@RequestParam("file") MultipartFile file) throws java.io.IOException {
         UUID userId = currentUserService.getCurrentUserId();
         String gcsUrl = storageService.uploadProfilePhoto(file, userId);
         return ResponseEntity.ok(UploadResponse.builder()
-                .gcsUrl(gcsUrl)
-                .message("Profile photo uploaded successfully")
+                .url(gcsUrl)
+                .fileName(file.getOriginalFilename())
+                .fileSize(file.getSize())
+                .mimeType(file.getContentType())
                 .build());
     }
 

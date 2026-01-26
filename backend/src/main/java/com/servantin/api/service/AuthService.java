@@ -5,6 +5,9 @@ import com.servantin.api.domain.model.UserRole;
 import com.servantin.api.dto.auth.AuthResponse;
 import com.servantin.api.dto.auth.LoginRequest;
 import com.servantin.api.dto.auth.RegisterRequest;
+import com.servantin.api.exception.BadRequestException;
+import com.servantin.api.exception.ConflictException;
+import com.servantin.api.exception.ResourceNotFoundException;
 import com.servantin.api.repository.UserRepository;
 import com.servantin.api.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +33,7 @@ public class AuthService {
     public AuthResponse register(RegisterRequest request) {
         // Check if email already exists
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email already registered");
+            throw ConflictException.emailAlreadyExists(request.getEmail());
         }
 
         // Determine role
@@ -90,7 +93,7 @@ public class AuthService {
 
         // Get user
         User user = userRepository.findByEmailWithProfile(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User", request.getEmail()));
 
         log.info("User logged in: {}", user.getEmail());
 
@@ -117,7 +120,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public AuthResponse.UserDto getCurrentUser(String email) {
         User user = userRepository.findByEmailWithProfile(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User", email));
 
         boolean hasProviderProfile = user.getProviderProfile() != null;
 
@@ -136,14 +139,14 @@ public class AuthService {
     @Transactional
     public void verifyEmail(String token) {
         User user = userRepository.findByVerificationToken(token)
-                .orElseThrow(() -> new RuntimeException("Invalid verification token"));
+                .orElseThrow(() -> BadRequestException.invalidToken("verification"));
 
         if (user.getVerificationTokenExpiry().isBefore(java.time.Instant.now())) {
-            throw new RuntimeException("Verification token has expired");
+            throw new BadRequestException("Verification token has expired", "TOKEN_EXPIRED");
         }
 
         if (user.getEmailVerified()) {
-            throw new RuntimeException("Email already verified");
+            throw new ConflictException("Email already verified", "ALREADY_VERIFIED");
         }
 
         user.setEmailVerified(true);
@@ -157,10 +160,10 @@ public class AuthService {
     @Transactional
     public void resendVerificationEmail(String email) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User", email));
 
         if (user.getEmailVerified()) {
-            throw new RuntimeException("Email already verified");
+            throw new ConflictException("Email already verified", "ALREADY_VERIFIED");
         }
 
         // Generate new verification token (24-hour expiry)
@@ -180,8 +183,12 @@ public class AuthService {
 
     @Transactional
     public void requestPasswordReset(String email) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        // Don't reveal if user exists - just log and return
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            log.warn("Password reset requested for non-existent email: {}", email);
+            return; // Silent return for security
+        }
 
         // Generate reset token (1-hour expiry)
         String resetToken = java.util.UUID.randomUUID().toString();
@@ -199,10 +206,10 @@ public class AuthService {
     @Transactional
     public void confirmPasswordReset(String token, String newPassword) {
         User user = userRepository.findByResetToken(token)
-                .orElseThrow(() -> new RuntimeException("Invalid reset token"));
+                .orElseThrow(() -> BadRequestException.invalidToken("reset"));
 
         if (user.getResetTokenExpiry().isBefore(java.time.Instant.now())) {
-            throw new RuntimeException("Reset token has expired");
+            throw new BadRequestException("Reset token has expired", "TOKEN_EXPIRED");
         }
 
         // Update password

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${isProvider} ? 'Service Completed - Servantin' : 'Please Rate Your Experience - Servantin'">Service Completed - Servantin</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f5;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f4f4f5;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td align="center" style="padding: 32px 40px 24px; border-bottom: 1px solid #e4e4e7;">
+                            <a th:href="${frontendUrl}" style="text-decoration: none;">
+                                <span style="font-size: 28px; font-weight: 700; color: #18181b;">Servantin</span>
+                            </a>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 32px 40px;">
+                            <div style="text-align: center; margin-bottom: 24px;">
+                                <span style="display: inline-block; padding: 8px 16px; background-color: #dcfce7; color: #166534; font-size: 14px; font-weight: 500; border-radius: 20px;">Completed</span>
+                            </div>
+
+                            <!-- Provider version -->
+                            <div th:if="${isProvider}">
+                                <h1 style="margin: 0 0 16px; font-size: 24px; font-weight: 600; color: #18181b;">Service Completed!</h1>
+                                <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+                                    Hi <span th:text="${recipientName}">there</span>,
+                                </p>
+                                <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+                                    Congratulations! Your service has been marked as completed. The client may leave a review for your work.
+                                </p>
+                                <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+                                    Thank you for providing excellent service through Servantin!
+                                </p>
+                            </div>
+
+                            <!-- Client version -->
+                            <div th:unless="${isProvider}">
+                                <h1 style="margin: 0 0 16px; font-size: 24px; font-weight: 600; color: #18181b;">How Was Your Experience?</h1>
+                                <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+                                    Hi <span th:text="${recipientName}">there</span>,
+                                </p>
+                                <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+                                    Your service has been completed! We hope everything went well.
+                                </p>
+                                <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+                                    Please take a moment to rate your experience. Your feedback helps other clients and supports great providers.
+                                </p>
+                            </div>
+
+                            <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                                <tr>
+                                    <td align="center" style="padding: 8px 0 16px;">
+                                        <a th:href="${bookingLink}" style="display: inline-block; padding: 14px 32px; background-color: #2563eb; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; border-radius: 6px;" th:text="${isProvider} ? 'View Details' : 'Leave a Review'">
+                                            Leave a Review
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td align="center" style="padding: 24px 40px 32px; border-top: 1px solid #e4e4e7; background-color: #fafafa; border-radius: 0 0 8px 8px;">
+                            <p style="margin: 0 0 8px; font-size: 14px; color: #71717a;">
+                                Need help? <a th:href="${frontendUrl + '/support'}" style="color: #2563eb; text-decoration: none;">Contact Support</a>
+                            </p>
+                            <p style="margin: 0; font-size: 12px; color: #a1a1aa;">
+                                Servantin - Connecting you with trusted service providers in Switzerland
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

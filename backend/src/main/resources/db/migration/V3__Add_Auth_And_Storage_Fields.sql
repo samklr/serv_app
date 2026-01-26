@@ -179,18 +179,18 @@ COMMENT ON VIEW provider_verification_readiness IS 'Shows provider verification 
 -- View for report statistics
 CREATE OR REPLACE VIEW report_statistics AS
 SELECT
-    reported_user_id,
+    r.reported_user_id,
     u.name AS reported_user_name,
     u.email AS reported_user_email,
     COUNT(*) AS total_reports,
-    COUNT(*) FILTER (WHERE status = 'PENDING') AS pending_reports,
-    COUNT(*) FILTER (WHERE status = 'INVESTIGATING') AS investigating_reports,
-    COUNT(*) FILTER (WHERE status = 'RESOLVED') AS resolved_reports,
-    COUNT(*) FILTER (WHERE status = 'DISMISSED') AS dismissed_reports,
-    MAX(created_at) AS last_reported_at
-FROM reports
-LEFT JOIN users u ON reports.reported_user_id = u.id
-WHERE reported_user_id IS NOT NULL
-GROUP BY reported_user_id, u.name, u.email;
+    COUNT(*) FILTER (WHERE r.status = 'PENDING') AS pending_reports,
+    COUNT(*) FILTER (WHERE r.status = 'INVESTIGATING') AS investigating_reports,
+    COUNT(*) FILTER (WHERE r.status = 'RESOLVED') AS resolved_reports,
+    COUNT(*) FILTER (WHERE r.status = 'DISMISSED') AS dismissed_reports,
+    MAX(r.created_at) AS last_reported_at
+FROM reports r
+LEFT JOIN users u ON r.reported_user_id = u.id
+WHERE r.reported_user_id IS NOT NULL
+GROUP BY r.reported_user_id, u.name, u.email;
 
 COMMENT ON VIEW report_statistics IS 'Aggregated statistics of reports per user';

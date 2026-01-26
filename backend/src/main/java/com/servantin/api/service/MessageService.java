@@ -72,13 +72,15 @@ public class MessageService {
             User recipient = senderIsClient ? booking.getProvider() : booking.getClient();
 
             if (recipient != null) {
+                String messagePreview = request.getContent().length() > 100
+                        ? request.getContent().substring(0, 100) + "..."
+                        : request.getContent();
                 emailService.sendNewMessageNotification(
                         recipient.getEmail(),
                         recipient.getName(),
                         sender.getName(),
                         booking.getId().toString(),
-                        booking.getCategory().getName(),
-                        request.getContent()
+                        messagePreview
                 );
             }
         } catch (Exception e) {

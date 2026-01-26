@@ -246,7 +246,13 @@ public class ProviderService {
                 }
 
                 // Upload file to GCS
-                String gcsUrl = storageService.uploadProviderDocument(file, profile.getId());
+                String gcsUrl;
+                try {
+                        gcsUrl = storageService.uploadProviderDocument(file, profile.getId());
+                } catch (java.io.IOException e) {
+                        log.error("Failed to upload document for provider {}: {}", userId, e.getMessage());
+                        throw new RuntimeException("Failed to upload document: " + e.getMessage(), e);
+                }
 
                 // Create document record
                 ProviderDocument document = ProviderDocument.builder()
@@ -254,8 +260,9 @@ public class ProviderService {
                                 .documentType(documentType)
                                 .documentUrl(gcsUrl)
                                 .fileName(file.getOriginalFilename())
-                                .fileSize(file.getSize())
-                                .status(VerificationStatus.PENDING)
+                                .fileSizeBytes(file.getSize())
+                                .mimeType(file.getContentType())
+                                .verificationStatus(VerificationStatus.PENDING)
                                 .build();
 
                 document = providerDocumentRepository.save(document);
@@ -272,7 +279,7 @@ public class ProviderService {
                 ProviderProfile profile = providerProfileRepository.findByUser_Id(userId)
                                 .orElseThrow(() -> new RuntimeException("Provider profile not found"));
 
-                return providerDocumentRepository.findByProviderProfileId(profile.getId()).stream()
+                return providerDocumentRepository.findByProviderProfile_Id(profile.getId()).stream()
                                 .map(this::toDocumentDto)
                                 .toList();
         }
@@ -289,6 +296,16 @@ public class ProviderService {
                 if (hour >= 12 && hour < 17)
                         return TimeSlot.AFTERNOON;
                 return TimeSlot.EVENING;
+        }
+
+        /**
+         * Get user ID by email (helper for admin operations)
+         */
+        @Transactional(readOnly = true)
+        public UUID getUserIdByEmail(String email) {
+                return userRepository.findByEmail(email)
+                        .map(User::getId)
+                        .orElseThrow(() -> new RuntimeException("User not found: " + email));
         }
 
         private ProviderProfileDto toDto(ProviderProfile profile) {
@@ -394,19 +411,24 @@ public class ProviderService {
         }
 
         private ProviderDocumentDto toDocumentDto(ProviderDocument document) {
+                // Generate signed URL for accessing the document
+                String signedUrl = null;
+                try {
+                        signedUrl = storageService.generateSignedUrl(document.getDocumentUrl());
+                } catch (Exception e) {
+                        log.warn("Failed to generate signed URL for document {}: {}", document.getId(), e.getMessage());
+                }
+
                 return ProviderDocumentDto.builder()
                                 .id(document.getId())
-                                .providerProfileId(document.getProviderProfile().getId())
                                 .documentType(document.getDocumentType())
-                                .documentUrl(document.getDocumentUrl())
                                 .fileName(document.getFileName())
-                                .fileSize(document.getFileSize())
-                                .status(document.getStatus())
+                                .fileSizeBytes(document.getFileSizeBytes())
+                                .verificationStatus(document.getVerificationStatus())
                                 .verificationNotes(document.getVerificationNotes())
-                                .verifiedById(document.getVerifiedBy() != null ? document.getVerifiedBy().getId() : null)
-                                .verifiedByName(document.getVerifiedBy() != null ? document.getVerifiedBy().getName() : null)
+                                .createdAt(document.getCreatedAt())
                                 .verifiedAt(document.getVerifiedAt())
-                                .uploadedAt(document.getUploadedAt())
+                                .signedUrl(signedUrl)
                                 .build();
         }
 }

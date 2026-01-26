@@ -7,6 +7,13 @@ spring:
     username: ${DATABASE_USER:postgres}
     password: ${DATABASE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${HIKARI_MAX_POOL_SIZE:10}
+      minimum-idle: ${HIKARI_MIN_IDLE:2}
+      connection-timeout: ${HIKARI_CONNECTION_TIMEOUT:30000}
+      idle-timeout: ${HIKARI_IDLE_TIMEOUT:600000}
+      max-lifetime: ${HIKARI_MAX_LIFETIME:1800000}
+      leak-detection-threshold: ${HIKARI_LEAK_DETECTION:60000}
 
   jpa:
     hibernate:
@@ -16,6 +23,10 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+        jdbc:
+          batch_size: ${HIBERNATE_BATCH_SIZE:25}
+        order_inserts: ${HIBERNATE_ORDER_INSERTS:true}
+        order_updates: ${HIBERNATE_ORDER_UPDATES:true}
 
   flyway:
     enabled: true
@@ -39,8 +50,8 @@ stripe:
 aws:
   ses:
     region: ${AWS_SES_REGION:us-east-1}
-    access-key-id: ${AWS_ACCESS_KEY_ID}
-    secret-access-key: ${AWS_SECRET_ACCESS_KEY}
+    access-key-id: ${AWS_ACCESS_KEY_ID:dummy-access-key}
+    secret-access-key: ${AWS_SECRET_ACCESS_KEY:dummy-secret-key}
     from-email: ${AWS_SES_FROM_EMAIL:noreply@servantin.com}
     from-name: ${AWS_SES_FROM_NAME:Servantin}
 
@@ -122,3 +133,65 @@ logging:
   level:
     root: WARN
     com.servantin: INFO
+
+---
+# ==============================================
+# Supabase Profile
+# For Supabase PostgreSQL with PgBouncer Transaction Mode
+# Free tier only supports Transaction mode (port 6543)
+# ==============================================
+spring:
+  config:
+    activate:
+      on-profile: supabase
+
+  datasource:
+    # Connection URL format for Supabase with PgBouncer Transaction mode
+    # prepareThreshold=0 is REQUIRED for PgBouncer transaction mode
+    url: jdbc:postgresql://${SUPABASE_HOST:localhost}:${SUPABASE_PORT:6543}/${SUPABASE_DB:postgres}?prepareThreshold=0&ssl=require&sslmode=require
+    username: ${SUPABASE_USER:postgres}
+    password: ${SUPABASE_PASSWORD:}
+    hikari:
+      # Keep pool size small for Supabase free tier (connection limits)
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 30000
+      idle-timeout: 300000
+      max-lifetime: 600000
+      # Disable connection test query for PgBouncer compatibility
+      connection-test-query: SELECT 1
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+        # CRITICAL: Disable batching for PgBouncer transaction mode
+        jdbc:
+          batch_size: 0
+          fetch_size: 0
+        # Disable insert/update ordering (requires batching)
+        order_inserts: false
+        order_updates: false
+        # Disable statement caching
+        generate_statistics: false
+        # Use simple identity generation (avoids sequences issues)
+        id:
+          new_generator_mappings: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    # Flyway works with PgBouncer but may need retries
+    connect-retries: 3
+
+logging:
+  level:
+    root: WARN
+    com.servantin: INFO
+    # Reduce Hibernate noise in production
+    org.hibernate: WARN

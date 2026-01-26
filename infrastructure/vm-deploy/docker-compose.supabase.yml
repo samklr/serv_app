@@ -1,0 +1,161 @@
+version: "3.8"
+
+# ============================================
+# Servantin Production Docker Compose
+# Single VM deployment with Supabase PostgreSQL
+# Uses Supabase instead of local PostgreSQL
+# ============================================
+
+services:
+  # ==========================================
+  # Backend API (Spring Boot)
+  # ==========================================
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: ../infrastructure/vm-deploy/docker/Dockerfile.backend
+    image: servantin-api:${VERSION:-latest}
+    container_name: servantin-api
+    restart: unless-stopped
+    environment:
+      # Supabase Database Configuration
+      SUPABASE_HOST: ${SUPABASE_HOST:?Supabase host required}
+      SUPABASE_PORT: ${SUPABASE_PORT:-6543}
+      SUPABASE_DB: ${SUPABASE_DB:-postgres}
+      SUPABASE_USER: ${SUPABASE_USER:?Supabase user required}
+      SUPABASE_PASSWORD: ${SUPABASE_PASSWORD:?Supabase password required}
+      # Spring Profile - MUST be 'supabase' for PgBouncer compatibility
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-supabase}
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:?JWT secret required}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      # URLs
+      FRONTEND_URL: https://${DOMAIN:-servapp.latticeiq.net}
+      BACKEND_URL: https://${DOMAIN:-servapp.latticeiq.net}
+      # Connection Pool Settings (optimized for Supabase free tier)
+      HIKARI_MAX_POOL_SIZE: ${HIKARI_MAX_POOL_SIZE:-5}
+      HIKARI_MIN_IDLE: ${HIKARI_MIN_IDLE:-1}
+      # AWS SES (Email)
+      AWS_SES_REGION: ${AWS_SES_REGION:-eu-west-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SES_FROM_EMAIL: ${AWS_SES_FROM_EMAIL:-noreply@servantin.ch}
+      AWS_SES_FROM_NAME: ${AWS_SES_FROM_NAME:-Servantin}
+      # GCP Storage
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-}
+      # Stripe
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    volumes:
+      - backend_logs:/app/logs
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s # Longer start period for remote DB connection
+    networks:
+      - servantin-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # ==========================================
+  # Frontend (Next.js)
+  # ==========================================
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: ../infrastructure/vm-deploy/docker/Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+    image: servantin-web:${VERSION:-latest}
+    container_name: servantin-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - servantin-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # ==========================================
+  # Caddy Reverse Proxy (Auto HTTPS)
+  # ==========================================
+  caddy:
+    image: caddy:2-alpine
+    container_name: servantin-proxy
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-servapp.latticeiq.net}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@latticeiq.net}
+    volumes:
+      - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - servantin-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+# ==========================================
+# Networks
+# ==========================================
+networks:
+  servantin-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ==========================================
+# Volumes
+# Note: No postgres_data volume since we use Supabase
+# ==========================================
+volumes:
+  backend_logs:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+  caddy_logs:
+    driver: local

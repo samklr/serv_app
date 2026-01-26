@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>You Received a New Rating - Servantin</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f5;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f4f4f5;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td align="center" style="padding: 32px 40px 24px; border-bottom: 1px solid #e4e4e7;">
+                            <a th:href="${frontendUrl}" style="text-decoration: none;">
+                                <span style="font-size: 28px; font-weight: 700; color: #18181b;">Servantin</span>
+                            </a>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 32px 40px;">
+                            <h1 style="margin: 0 0 16px; font-size: 24px; font-weight: 600; color: #18181b;">You Received a New Rating!</h1>
+                            <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+                                Hi <span th:text="${providerName}">there</span>,
+                            </p>
+                            <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #3f3f46;">
+                                A client has left a rating for your recent service. Great work!
+                            </p>
+
+                            <!-- Rating Display -->
+                            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 24px;">
+                                <tr>
+                                    <td align="center" style="padding: 24px; background-color: #fefce8; border-radius: 8px;">
+                                        <p style="margin: 0 0 8px; font-size: 40px; letter-spacing: 4px;" th:text="${ratingStars}">
+                                            ★★★★★
+                                        </p>
+                                        <p style="margin: 0; font-size: 18px; font-weight: 600; color: #854d0e;">
+                                            <span th:text="${rating}">5</span> out of 5 stars
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="margin: 0 0 24px; font-size: 14px; line-height: 1.6; color: #71717a;">
+                                Positive reviews help you attract more clients. Keep up the excellent work!
+                            </p>
+
+                            <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                                <tr>
+                                    <td align="center" style="padding: 8px 0 16px;">
+                                        <a th:href="${bookingLink}" style="display: inline-block; padding: 14px 32px; background-color: #2563eb; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; border-radius: 6px;">
+                                            View Your Reviews
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td align="center" style="padding: 24px 40px 32px; border-top: 1px solid #e4e4e7; background-color: #fafafa; border-radius: 0 0 8px 8px;">
+                            <p style="margin: 0 0 8px; font-size: 14px; color: #71717a;">
+                                Need help? <a th:href="${frontendUrl + '/support'}" style="color: #2563eb; text-decoration: none;">Contact Support</a>
+                            </p>
+                            <p style="margin: 0; font-size: 12px; color: #a1a1aa;">
+                                Servantin - Connecting you with trusted service providers in Switzerland
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
