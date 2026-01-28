@@ -1,7 +1,7 @@
 package com.servantin.api.service;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.TemplateEngine;
@@ -9,46 +9,77 @@ import org.thymeleaf.context.Context;
 import software.amazon.awssdk.services.ses.SesClient;
 import software.amazon.awssdk.services.ses.model.*;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Email service for sending transactional emails via AWS SES.
  * Handles all 13 notification touchpoints identified in the application.
+ * 
+ * When AWS SES is not configured, emails are logged instead of being sent.
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class EmailService {
 
     private final SesClient sesClient;
     private final TemplateEngine templateEngine;
+    private final boolean emailEnabled;
 
-    @Value("${aws.ses.from-email}")
+    @Value("${aws.ses.from-email:noreply@servantin.com}")
     private String fromEmail;
 
-    @Value("${aws.ses.from-name}")
+    @Value("${aws.ses.from-name:Servantin}")
     private String fromName;
 
-    @Value("${app.url.frontend}")
+    @Value("${app.url.frontend:http://localhost:3000}")
     private String frontendUrl;
+
+    @Autowired
+    public EmailService(
+            @Autowired(required = false) SesClient sesClient,
+            TemplateEngine templateEngine) {
+        this.sesClient = sesClient;
+        this.templateEngine = templateEngine;
+        this.emailEnabled = sesClient != null;
+
+        if (!emailEnabled) {
+            log.warn("EmailService initialized WITHOUT AWS SES - emails will be logged only");
+        } else {
+            log.info("EmailService initialized with AWS SES enabled");
+        }
+    }
 
     /**
      * Send HTML email using Thymeleaf template.
      *
-     * @param to recipient email address
-     * @param subject email subject
+     * @param to           recipient email address
+     * @param subject      email subject
      * @param templateName Thymeleaf template name (without .html extension)
-     * @param variables template variables
+     * @param variables    template variables
      */
     public void sendEmail(String to, String subject, String templateName, Map<String, Object> variables) {
+        // Make variables mutable if it isn't already
+        Map<String, Object> mutableVariables = new HashMap<>(variables);
+
         try {
             // Add common variables available to all templates
-            variables.put("frontendUrl", frontendUrl);
+            mutableVariables.put("frontendUrl", frontendUrl);
 
             // Process template
             Context context = new Context();
-            context.setVariables(variables);
+            context.setVariables(mutableVariables);
             String htmlBody = templateEngine.process("email/" + templateName, context);
+
+            if (!emailEnabled) {
+                // Log email instead of sending when SES is not configured
+                log.info("=== EMAIL (not sent - SES not configured) ===");
+                log.info("To: {}", to);
+                log.info("Subject: {}", subject);
+                log.info("Template: {}", templateName);
+                log.debug("Body preview: {}", htmlBody.substring(0, Math.min(200, htmlBody.length())) + "...");
+                return;
+            }
 
             // Build email request
             SendEmailRequest request = SendEmailRequest.builder()
@@ -68,10 +99,13 @@ public class EmailService {
 
         } catch (SesException e) {
             log.error("Failed to send email to {}: {}", to, e.awsErrorDetails().errorMessage(), e);
-            throw new RuntimeException("Failed to send email: " + e.awsErrorDetails().errorMessage());
+            // Don't throw - email failures should not break the application flow
+            // throw new RuntimeException("Failed to send email: " +
+            // e.awsErrorDetails().errorMessage());
         } catch (Exception e) {
             log.error("Unexpected error sending email to {}: {}", to, e.getMessage(), e);
-            throw new RuntimeException("Failed to send email", e);
+            // Don't throw - email failures should not break the application flow
+            // throw new RuntimeException("Failed to send email", e);
         }
     }
 
@@ -84,8 +118,7 @@ public class EmailService {
         String verificationLink = frontendUrl + "/auth/verify-email?token=" + verificationToken;
         Map<String, Object> variables = Map.of(
                 "name", name,
-                "verificationLink", verificationLink
-        );
+                "verificationLink", verificationLink);
         sendEmail(to, "Verify Your Email - Servantin", "verification", variables);
         log.info("Verification email sent to {}", to);
     }
@@ -97,8 +130,7 @@ public class EmailService {
         String resetLink = frontendUrl + "/auth/reset-password?token=" + resetToken;
         Map<String, Object> variables = Map.of(
                 "name", name,
-                "resetLink", resetLink
-        );
+                "resetLink", resetLink);
         sendEmail(to, "Password Reset Request - Servantin", "password-reset", variables);
         log.info("Password reset email sent to {}", to);
     }
@@ -110,8 +142,7 @@ public class EmailService {
         Map<String, Object> variables = Map.of(
                 "name", name,
                 "isProvider", isProvider,
-                "dashboardLink", isProvider ? frontendUrl + "/provider/dashboard" : frontendUrl + "/dashboard"
-        );
+                "dashboardLink", isProvider ? frontendUrl + "/provider/dashboard" : frontendUrl + "/dashboard");
         sendEmail(to, "Welcome to Servantin!", "welcome", variables);
         log.info("Welcome email sent to {} (provider: {})", to, isProvider);
     }
@@ -124,8 +155,7 @@ public class EmailService {
                 "clientName", clientName,
                 "bookingId", bookingId,
                 "categoryName", categoryName,
-                "bookingLink", frontendUrl + "/dashboard/bookings/" + bookingId
-        );
+                "bookingLink", frontendUrl + "/dashboard/bookings/" + bookingId);
         sendEmail(to, "Your Service Request Has Been Submitted - Servantin", "booking-requested-client", variables);
         log.info("Booking request confirmation sent to client {}", to);
     }
@@ -134,15 +164,14 @@ public class EmailService {
      * 5. Notify provider of new booking request
      */
     public void sendBookingRequestedToProvider(String to, String providerName, String bookingId,
-                                               String clientName, String categoryName, String description) {
+            String clientName, String categoryName, String description) {
         Map<String, Object> variables = Map.of(
                 "providerName", providerName,
                 "bookingId", bookingId,
                 "clientName", clientName,
                 "categoryName", categoryName,
                 "description", description.length() > 200 ? description.substring(0, 200) + "..." : description,
-                "bookingLink", frontendUrl + "/provider/dashboard"
-        );
+                "bookingLink", frontendUrl + "/provider/dashboard");
         sendEmail(to, "New Service Request Received - Servantin", "booking-requested-provider", variables);
         log.info("New booking request notification sent to provider {}", to);
     }
@@ -155,8 +184,7 @@ public class EmailService {
                 "clientName", clientName,
                 "providerName", providerName,
                 "bookingId", bookingId,
-                "bookingLink", frontendUrl + "/dashboard/bookings/" + bookingId
-        );
+                "bookingLink", frontendUrl + "/dashboard/bookings/" + bookingId);
         sendEmail(to, "Service Request Accepted! - Servantin", "booking-accepted", variables);
         log.info("Booking accepted notification sent to client {}", to);
     }
@@ -170,8 +198,7 @@ public class EmailService {
                 "providerName", providerName,
                 "bookingId", bookingId,
                 "bookingLink", frontendUrl + "/dashboard/bookings/" + bookingId,
-                "searchLink", frontendUrl + "/book"
-        );
+                "searchLink", frontendUrl + "/book");
         sendEmail(to, "Service Request Update - Servantin", "booking-declined", variables);
         log.info("Booking declined notification sent to client {}", to);
     }
@@ -184,8 +211,7 @@ public class EmailService {
                 "recipientName", recipientName,
                 "bookingId", bookingId,
                 "isProvider", isProvider,
-                "bookingLink", frontendUrl + (isProvider ? "/provider/dashboard" : "/dashboard/bookings/" + bookingId)
-        );
+                "bookingLink", frontendUrl + (isProvider ? "/provider/dashboard" : "/dashboard/bookings/" + bookingId));
         String subject = isProvider ? "Service Completed - Servantin" : "Please Rate Your Experience - Servantin";
         sendEmail(to, subject, "booking-completed", variables);
         log.info("Booking completed notification sent to {} (provider: {})", to, isProvider);
@@ -198,8 +224,7 @@ public class EmailService {
         Map<String, Object> variables = Map.of(
                 "recipientName", recipientName,
                 "bookingId", bookingId,
-                "bookingLink", frontendUrl + "/dashboard"
-        );
+                "bookingLink", frontendUrl + "/dashboard");
         sendEmail(to, "Service Request Canceled - Servantin", "booking-canceled", variables);
         log.info("Booking canceled notification sent to {}", to);
     }
@@ -208,14 +233,13 @@ public class EmailService {
      * 10. Notify recipient of new message in booking conversation
      */
     public void sendNewMessageNotification(String to, String recipientName, String senderName,
-                                          String bookingId, String messagePreview) {
+            String bookingId, String messagePreview) {
         Map<String, Object> variables = Map.of(
                 "recipientName", recipientName,
                 "senderName", senderName,
                 "messagePreview", messagePreview,
                 "bookingId", bookingId,
-                "bookingLink", frontendUrl + "/dashboard/bookings/" + bookingId
-        );
+                "bookingLink", frontendUrl + "/dashboard/bookings/" + bookingId);
         sendEmail(to, "New Message from " + senderName + " - Servantin", "new-message", variables);
         log.info("New message notification sent to {} from {}", to, senderName);
     }
@@ -229,8 +253,7 @@ public class EmailService {
                 "rating", rating,
                 "bookingId", bookingId,
                 "bookingLink", frontendUrl + "/provider/dashboard",
-                "ratingStars", "★".repeat(rating) + "☆".repeat(5 - rating)
-        );
+                "ratingStars", "★".repeat(rating) + "☆".repeat(5 - rating));
         sendEmail(to, "You Received a New Rating - Servantin", "rating-received", variables);
         log.info("Rating received notification sent to provider {} (rating: {})", to, rating);
     }
@@ -242,8 +265,7 @@ public class EmailService {
         Map<String, Object> variables = Map.of(
                 "providerName", providerName,
                 "dashboardLink", frontendUrl + "/provider/dashboard",
-                "profileLink", frontendUrl + "/provider/profile"
-        );
+                "profileLink", frontendUrl + "/provider/profile");
         sendEmail(to, "Your Provider Profile Has Been Verified! - Servantin", "provider-verified", variables);
         log.info("Provider verification success email sent to {}", to);
     }
@@ -256,8 +278,7 @@ public class EmailService {
                 "providerName", providerName,
                 "reason", reason != null ? reason : "Please review your documents and try again.",
                 "supportLink", frontendUrl + "/support",
-                "profileLink", frontendUrl + "/provider/profile"
-        );
+                "profileLink", frontendUrl + "/provider/profile");
         sendEmail(to, "Provider Verification Update - Servantin", "provider-rejected", variables);
         log.info("Provider verification rejection email sent to {}", to);
     }
