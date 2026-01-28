@@ -17,6 +17,9 @@
 #   update      Pull latest and redeploy
 #   clean       Clean up Docker resources
 #
+# Environment Variables:
+#   SERVANTIN_APP_DIR  Override the application directory (default: auto-detect or /opt/servantin)
+#
 
 set -e
 
@@ -31,15 +34,47 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Configuration
-APP_DIR="/opt/servantin"
+# Configuration - Auto-detect APP_DIR
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Determine APP_DIR in this priority:
+# 1. SERVANTIN_APP_DIR environment variable
+# 2. If docker-compose.yml exists in DEPLOY_DIR, use DEPLOY_DIR (local mode)
+# 3. If docker-compose.yml exists in /opt/servantin, use that (production mode)
+# 4. Fall back to DEPLOY_DIR
+if [ -n "$SERVANTIN_APP_DIR" ]; then
+    APP_DIR="$SERVANTIN_APP_DIR"
+elif [ -f "${DEPLOY_DIR}/docker-compose.yml" ] || [ -f "${DEPLOY_DIR}/docker-compose.supabase.yml" ]; then
+    # Check if there's an active deployment in deploy dir
+    if docker-compose -f "${DEPLOY_DIR}/docker-compose.yml" ps -q 2>/dev/null | grep -q .; then
+        APP_DIR="$DEPLOY_DIR"
+    elif docker-compose -f "${DEPLOY_DIR}/docker-compose.supabase.yml" ps -q 2>/dev/null | grep -q .; then
+        APP_DIR="$DEPLOY_DIR"
+    elif [ -f "/opt/servantin/docker-compose.yml" ]; then
+        APP_DIR="/opt/servantin"
+    else
+        APP_DIR="$DEPLOY_DIR"
+    fi
+elif [ -f "/opt/servantin/docker-compose.yml" ]; then
+    APP_DIR="/opt/servantin"
+else
+    APP_DIR="$DEPLOY_DIR"
+fi
+
 BACKUP_DIR="${APP_DIR}/backups"
 COMPOSE_FILE="${APP_DIR}/docker-compose.yml"
+
+# Also check for supabase compose file
+if [ ! -f "$COMPOSE_FILE" ] && [ -f "${APP_DIR}/docker-compose.supabase.yml" ]; then
+    COMPOSE_FILE="${APP_DIR}/docker-compose.supabase.yml"
+fi
 
 # Check if compose file exists
 check_app() {
     if [ ! -f "$COMPOSE_FILE" ]; then
-        log_error "Application not deployed. Run deploy.sh first."
+        log_error "Application not deployed. No docker-compose file found at $COMPOSE_FILE"
+        log_info "Run deploy.sh first, or set SERVANTIN_APP_DIR to point to your deployment."
         exit 1
     fi
 }
@@ -47,7 +82,13 @@ check_app() {
 # Load environment
 load_env() {
     if [ -f "${APP_DIR}/.env" ]; then
-        export $(grep -v '^#' "${APP_DIR}/.env" | grep -v '^$' | xargs)
+        set -a
+        source "${APP_DIR}/.env"
+        set +a
+    elif [ -f "${DEPLOY_DIR}/.env" ]; then
+        set -a
+        source "${DEPLOY_DIR}/.env"
+        set +a
     fi
 }
 
@@ -65,7 +106,7 @@ is_supabase() {
 cmd_start() {
     check_app
     load_env
-    log_info "Starting services..."
+    log_info "Starting services from ${APP_DIR}..."
     cd "$APP_DIR"
     docker-compose -f "$COMPOSE_FILE" up -d
     log_info "Services started"
@@ -100,6 +141,9 @@ cmd_status() {
     check_app
     load_env
     echo ""
+    log_info "Application Directory: ${APP_DIR}"
+    log_info "Compose File: ${COMPOSE_FILE}"
+    echo ""
     log_info "Service Status:"
     cd "$APP_DIR"
     docker-compose -f "$COMPOSE_FILE" ps
@@ -111,7 +155,7 @@ cmd_status() {
     echo ""
 
     log_info "Disk Usage:"
-    df -h /opt/servantin 2>/dev/null || df -h /
+    df -h "$APP_DIR" 2>/dev/null || df -h /
     echo ""
     
     # Show database mode
@@ -307,7 +351,6 @@ cmd_update() {
     cmd_backup || log_warn "Backup failed, continuing with update..."
 
     # Detect if using Supabase and pass the flag
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if is_supabase; then
         "${SCRIPT_DIR}/deploy.sh" --pull --build --clean --supabase
     else
@@ -359,6 +402,10 @@ cmd_help() {
     echo "  clean [--volumes]     Clean up Docker resources"
     echo "  help                  Show this help"
     echo ""
+    echo "Environment Variables:"
+    echo "  SERVANTIN_APP_DIR     Override the application directory"
+    echo "                        (auto-detects local vs production mode)"
+    echo ""
     echo "Examples:"
     echo "  ./manage.sh logs -f backend    Follow backend logs"
     echo "  ./manage.sh shell postgres     Open PostgreSQL shell"
@@ -367,6 +414,10 @@ cmd_help() {
     echo "Database Modes:"
     echo "  - Local PostgreSQL: Uses containerized PostgreSQL"
     echo "  - Supabase: Uses remote Supabase PostgreSQL (auto-detected from .env)"
+    echo ""
+    echo "Current Configuration:"
+    echo "  APP_DIR: ${APP_DIR}"
+    echo "  COMPOSE_FILE: ${COMPOSE_FILE}"
     echo ""
 }
 

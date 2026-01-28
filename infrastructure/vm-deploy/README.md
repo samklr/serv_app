@@ -145,8 +145,32 @@ The deploy script accepts optional flags:
 ./scripts/deploy.sh --pull      # Pull latest code from git first
 ./scripts/deploy.sh --clean     # Clean up old images after deploy
 ./scripts/deploy.sh --supabase  # Use Supabase PostgreSQL instead of local
-./scripts/deploy.sh --supabase --build --pull --clean  # All options
+./scripts/deploy.sh --local     # Run from current directory (skip /opt setup)
+./scripts/deploy.sh --supabase --build --local  # Combine options
 ```
+
+### Local Mode (--local)
+
+By default, `deploy.sh` copies configuration to `/opt/servantin` for production-style deployments. Use `--local` to run directly from the current directory:
+
+```bash
+# Run locally without /opt setup (great for development/testing)
+./scripts/deploy.sh --local --supabase
+
+# Or set a custom directory via environment variable
+export SERVANTIN_APP_DIR=/home/myuser/servantin
+./scripts/deploy.sh
+```
+
+**When to use `--local`:**
+- Local development/testing
+- When you don't have write access to `/opt`
+- For quick iterations without copying files
+
+**Environment Variable:** `SERVANTIN_APP_DIR`
+- Override the default application directory (`/opt/servantin`)
+- Used by both `deploy.sh` and `manage.sh`
+- Auto-detected by `manage.sh` if not set
 
 ## SSL/HTTPS (Automatic)
 

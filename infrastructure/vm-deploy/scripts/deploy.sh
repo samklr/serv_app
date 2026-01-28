@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Servantin Deployment Script
-# Deploys the application to a single VM
+# Deploys the application to a single VM or runs locally
 #
 # Usage: ./deploy.sh [options]
 # Options:
@@ -9,6 +9,7 @@
 #   --pull      Pull latest from git
 #   --clean     Clean up old images after deployment
 #   --supabase  Use Supabase PostgreSQL instead of local PostgreSQL
+#   --local     Run from current directory (don't copy to /opt)
 #
 
 set -e
@@ -29,14 +30,17 @@ log_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(dirname "$SCRIPT_DIR")"
 PROJECT_DIR="$(dirname "$(dirname "$DEPLOY_DIR")")"
-APP_DIR="/opt/servantin"
-ENV_FILE="${DEPLOY_DIR}/.env"
+
+# Default APP_DIR can be overridden by environment variable
+# If not set, defaults to /opt/servantin for production-like deployments
+DEFAULT_APP_DIR="/opt/servantin"
 
 # Parse arguments
 BUILD=false
 PULL=false
 CLEAN=false
 USE_SUPABASE=false
+LOCAL_MODE=false
 
 for arg in "$@"; do
     case $arg in
@@ -44,9 +48,20 @@ for arg in "$@"; do
         --pull) PULL=true ;;
         --clean) CLEAN=true ;;
         --supabase) USE_SUPABASE=true ;;
+        --local) LOCAL_MODE=true ;;
         *) log_warn "Unknown argument: $arg" ;;
     esac
 done
+
+# Set APP_DIR based on mode
+if [ "$LOCAL_MODE" = true ]; then
+    APP_DIR="$DEPLOY_DIR"
+    log_info "Local mode: Running from ${APP_DIR}"
+else
+    APP_DIR="${SERVANTIN_APP_DIR:-$DEFAULT_APP_DIR}"
+fi
+
+ENV_FILE="${DEPLOY_DIR}/.env"
 
 # Set compose file based on mode
 if [ "$USE_SUPABASE" = true ]; then
@@ -62,6 +77,11 @@ echo ""
 echo "============================================"
 echo "  Servantin Deployment Script"
 echo "  Mode: ${DEPLOY_MODE}"
+if [ "$LOCAL_MODE" = true ]; then
+    echo "  Running: Local (in-place)"
+else
+    echo "  Running: Production (${APP_DIR})"
+fi
 echo "============================================"
 echo ""
 
@@ -92,7 +112,9 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 # Load environment variables for validation
-export $(grep -v '^#' "$ENV_FILE" | grep -v '^$' | xargs)
+set -a
+source "$ENV_FILE"
+set +a
 
 # Validate Supabase configuration if using Supabase
 if [ "$USE_SUPABASE" = true ]; then
@@ -143,15 +165,10 @@ fi
 
 # Build Docker images
 # We build from the deployment directory so that relative paths (../../backend) resolve correctly.
-# We also enable BuildKit and allow filesystem access to prevent permission errors like "requesting privileges for fs.read=/".
+# We also enable BuildKit and allow filesystem access to prevent permission errors.
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 export BUILDX_BAKE_ENTITLEMENTS_FS=0
-
-# Ensure environment variables are loaded for the build
-if [ -f "$ENV_FILE" ]; then
-    export $(grep -v '^#' "$ENV_FILE" | grep -v '^$' | xargs)
-fi
 
 if [ "$BUILD" = true ]; then
     log_step "Building Docker images (no cache)..."
@@ -161,29 +178,36 @@ else
     docker-compose -f "${DEPLOY_DIR}/${COMPOSE_FILE}" --project-directory "${DEPLOY_DIR}" build
 fi
 
-# Create directories
-log_step "Creating directories..."
-mkdir -p "$APP_DIR"/{data,logs,backups,certs}
-mkdir -p "${DEPLOY_DIR}/certs"
+# Setup directories and copy files (skip in local mode)
+if [ "$LOCAL_MODE" != true ]; then
+    log_step "Creating directories..."
+    mkdir -p "$APP_DIR"/{data,logs,backups,certs}
+    mkdir -p "${DEPLOY_DIR}/certs"
 
-# Copy files to app directory
-log_step "Copying configuration files..."
-cp "${DEPLOY_DIR}/${COMPOSE_FILE}" "$APP_DIR/docker-compose.yml"
-cp "${ENV_FILE}" "$APP_DIR/.env"
-cp -r "${DEPLOY_DIR}/config" "$APP_DIR/"
-
-# Switch to app directory for runtime operations
-cd "$APP_DIR"
-# Load the .env file from the app directory that we just copied
-export $(grep -v '^#' .env | grep -v '^$' | xargs)
+    log_step "Copying configuration files to ${APP_DIR}..."
+    cp "${DEPLOY_DIR}/${COMPOSE_FILE}" "$APP_DIR/docker-compose.yml"
+    cp "${ENV_FILE}" "$APP_DIR/.env"
+    cp -r "${DEPLOY_DIR}/config" "$APP_DIR/"
+    
+    # Switch to app directory for runtime operations
+    cd "$APP_DIR"
+    RUNTIME_COMPOSE_FILE="docker-compose.yml"
+else
+    # In local mode, run from deploy directory
+    cd "$DEPLOY_DIR"
+    RUNTIME_COMPOSE_FILE="${COMPOSE_FILE}"
+    
+    # Create local data directories
+    mkdir -p "${DEPLOY_DIR}/data" "${DEPLOY_DIR}/logs" "${DEPLOY_DIR}/backups" "${DEPLOY_DIR}/certs"
+fi
 
 # Stop existing containers gracefully
 log_step "Stopping existing containers..."
-docker-compose -f docker-compose.yml down --remove-orphans || true
+docker-compose -f "$RUNTIME_COMPOSE_FILE" down --remove-orphans || true
 
 # Start services
 log_step "Starting services..."
-docker-compose -f docker-compose.yml up -d
+docker-compose -f "$RUNTIME_COMPOSE_FILE" up -d
 
 # Wait for services to be healthy
 log_step "Waiting for services to be healthy..."
@@ -193,7 +217,7 @@ if [ "$USE_SUPABASE" != true ]; then
     echo -n "Waiting for PostgreSQL..."
     timeout=60
     counter=0
-    until docker-compose exec -T postgres pg_isready -U ${DB_USER:-servantin} > /dev/null 2>&1; do
+    until docker-compose -f "$RUNTIME_COMPOSE_FILE" exec -T postgres pg_isready -U ${DB_USER:-servantin} > /dev/null 2>&1; do
         sleep 2
         counter=$((counter + 2))
         if [ $counter -ge $timeout ]; then
@@ -215,7 +239,7 @@ until curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; do
     if [ $counter -ge $timeout ]; then
         echo " TIMEOUT"
         log_warn "Backend may still be starting..."
-        log_info "Check logs with: ./manage.sh logs -f backend"
+        log_info "Check logs with: docker-compose -f ${RUNTIME_COMPOSE_FILE} logs -f backend"
         break
     fi
     echo -n "."
@@ -251,7 +275,7 @@ log_info "  Mode: ${DEPLOY_MODE}"
 log_info "============================================"
 echo ""
 log_info "Services status:"
-docker-compose -f docker-compose.yml ps
+docker-compose -f "$RUNTIME_COMPOSE_FILE" ps
 echo ""
 log_info "Application URLs:"
 echo "  - Frontend: https://${DOMAIN:-servapp.latticeiq.net}"
@@ -268,9 +292,20 @@ else
     log_info "Database: Local PostgreSQL container"
 fi
 echo ""
-log_info "Management commands:"
-echo "  - View logs: ./manage.sh logs"
-echo "  - Stop app: ./manage.sh stop"
-echo "  - Restart: ./manage.sh restart"
-echo "  - Status: ./manage.sh status"
+
+if [ "$LOCAL_MODE" = true ]; then
+    log_info "Running in local mode from: ${DEPLOY_DIR}"
+    log_info "Management commands:"
+    echo "  - View logs: docker-compose -f ${RUNTIME_COMPOSE_FILE} logs -f"
+    echo "  - Stop app: docker-compose -f ${RUNTIME_COMPOSE_FILE} down"
+    echo "  - Restart: docker-compose -f ${RUNTIME_COMPOSE_FILE} restart"
+    echo "  - Status: docker-compose -f ${RUNTIME_COMPOSE_FILE} ps"
+else
+    log_info "Running from: ${APP_DIR}"
+    log_info "Management commands:"
+    echo "  - View logs: ./manage.sh logs"
+    echo "  - Stop app: ./manage.sh stop"
+    echo "  - Restart: ./manage.sh restart"
+    echo "  - Status: ./manage.sh status"
+fi
 echo ""
