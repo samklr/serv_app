@@ -67,11 +67,11 @@ USER appuser
 EXPOSE 8080
 
 # JVM settings for container environment
+# Note: Do NOT set -Dspring.profiles.active here - let SPRING_PROFILES_ACTIVE env var control it
 ENV JAVA_OPTS="-XX:+UseContainerSupport \
     -XX:MaxRAMPercentage=75.0 \
     -XX:InitialRAMPercentage=50.0 \
-    -Djava.security.egd=file:/dev/./urandom \
-    -Dspring.profiles.active=prod"
+    -Djava.security.egd=file:/dev/./urandom"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
