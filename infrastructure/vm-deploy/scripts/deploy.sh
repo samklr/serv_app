@@ -141,6 +141,26 @@ if [ "$PULL" = true ]; then
     log_info "Code updated"
 fi
 
+# Build Docker images
+# We build from the deployment directory so that relative paths (../../backend) resolve correctly.
+# We also enable BuildKit and allow filesystem access to prevent permission errors like "requesting privileges for fs.read=/".
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+export BUILDX_BAKE_ENTITLEMENTS_FS=0
+
+# Ensure environment variables are loaded for the build
+if [ -f "$ENV_FILE" ]; then
+    export $(grep -v '^#' "$ENV_FILE" | grep -v '^$' | xargs)
+fi
+
+if [ "$BUILD" = true ]; then
+    log_step "Building Docker images (no cache)..."
+    docker-compose -f "${DEPLOY_DIR}/${COMPOSE_FILE}" --project-directory "${DEPLOY_DIR}" build --no-cache
+else
+    log_step "Building Docker images (cached)..."
+    docker-compose -f "${DEPLOY_DIR}/${COMPOSE_FILE}" --project-directory "${DEPLOY_DIR}" build
+fi
+
 # Create directories
 log_step "Creating directories..."
 mkdir -p "$APP_DIR"/{data,logs,backups,certs}
@@ -152,17 +172,10 @@ cp "${DEPLOY_DIR}/${COMPOSE_FILE}" "$APP_DIR/docker-compose.yml"
 cp "${ENV_FILE}" "$APP_DIR/.env"
 cp -r "${DEPLOY_DIR}/config" "$APP_DIR/"
 
-# Build or pull images
+# Switch to app directory for runtime operations
 cd "$APP_DIR"
+# Load the .env file from the app directory that we just copied
 export $(grep -v '^#' .env | grep -v '^$' | xargs)
-
-if [ "$BUILD" = true ]; then
-    log_step "Building Docker images (no cache)..."
-    docker-compose -f docker-compose.yml build --no-cache
-else
-    log_step "Building Docker images (cached)..."
-    docker-compose -f docker-compose.yml build
-fi
 
 # Stop existing containers gracefully
 log_step "Stopping existing containers..."
